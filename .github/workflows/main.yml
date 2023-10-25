@@ -1,0 +1,55 @@
+name: Python Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      VM_USER: ${{ secrets.VM_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      VM_IP: ${{ secrets.VM_IP }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Create SSH Key
+        run: |
+          echo "$SSH_PRIVATE_KEY" > deploy.key
+          chmod 600 deploy.key
+
+      - name: Copy Python Application Files
+        run: |
+          scp -o StrictHostKeyChecking=no -i deploy.key -r ./main.py $VM_USER@$VM_IP:~
+
+      - name: Stop the Python Service
+        run: |
+          if ssh -o StrictHostKeyChecking=no -i deploy.key $VM_USER@$VM_IP "systemctl is-active python-app"; then
+            ssh -o StrictHostKeyChecking=no -i deploy.key $VM_USER@$VM_IP "systemctl stop python-app"
+          else
+            echo "Service doesn't exist or is not running. No need to stop."
+          fi
+
+      - name: Upload Python Service Unit File
+        run: |
+          # Modify this to upload your Python service unit file (e.g., python-app.service)
+          scp -o StrictHostKeyChecking=no -i deploy.key python-app.service $VM_USER@$VM_IP:/etc/systemd/system/python-app.service
+          # Reload the systemd daemon
+          ssh -o StrictHostKeyChecking=no -i deploy.key $VM_USER@$VM_IP "systemctl daemon-reload"
+
+      - name: Start the Python Service
+        run: |
+          ssh -o StrictHostKeyChecking=no -i deploy.key $VM_USER@$VM_IP "systemctl start python-app"
+
+      - name: Setup Python Environment
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9  
+          architecture: x64
+
+      - name: Install Python Requirements
+        run: |
+          pip install -r requirements.txt  
+
